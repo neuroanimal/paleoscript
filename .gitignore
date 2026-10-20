@@ -21,6 +21,7 @@ node_modules/
 draw_script/.vercel/
 draw_script/.tanstack/
 draw_script/dist/
+draw_script/dist-pages/
 draw_script/.output/
 draw_script/.node_modules.lock
 # Szablon platformy Groka (skills, references, status); app-env.json jest potrzebny

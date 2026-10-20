@@ -28,6 +28,10 @@ python3 recognize_scan.py manuscript_pages/c8acfe1a_page_0021_f4r.jpg \
     --hand-out scan_analysis/f4r_hand.json --base merowinska
 ```
 
+Wersja statyczna (sam generator w przeglądarce, bez serwera) jest na GitHub Pages:
+https://neuroanimal.github.io/paleoscript/ - budowana przez `.github/workflows/pages.yml`
+z `draw_script/pages/` (`npm run build:pages`). Skrypty Pythona działają tylko lokalnie.
+
 Rękę z `--hand-out` wczytuje się w GUI przyciskiem „Ręka ze skanu (.json)”; razem z nią
 wczytuje się geometria karty (format, marginesy, interlinia, poprzednia karta / blat obok).
 `recognize_scan.py --calibrate` sprawdza potok na kartach wygenerowanych przez Calamusa.
