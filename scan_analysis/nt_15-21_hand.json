@@ -1,0 +1,65 @@
+{
+ "nibJitter": 7.687534588988359,
+ "id": "skan-c8acfe1a_page_0015_f1r+6",
+ "name": "NT łac. VIII w., k. 1r-4r",
+ "latin": "ex imagine",
+ "years": [
+  1048,
+  1178
+ ],
+ "culture": "humanistyczny",
+ "blurb": "Skalibrowane ze skanu (c8acfe1a_page_0015_f1r+6). Zmierzone: stalówka 36°, szerokość 0.272 wysokości x, pochył 3.4°. Reszta (kształty liter, skróty) z najbliższych rąk: Przejście gotycko-humanistyczne, Merowińska, Przejście karolińsko-gotyckie. To przybliżenie, nie ekspertyza.",
+ "nib": 36.09605448027589,
+ "weight": 0.27240403688678455,
+ "slant": 3.40708734041583,
+ "angular": 0.3446218346797128,
+ "compress": 0.26448830989693023,
+ "tremor": 0.8641442122926875,
+ "wander": 1.1568965304265089,
+ "feet": 0.33993017538368536,
+ "loops": 0.14149394875773746,
+ "biting": 0.22698186830722059,
+ "longS": 0.47289107053371465,
+ "rRotunda": 0.2574126768328728,
+ "uncialD": 0.5437350414812792,
+ "aForm": 0.3844757218233657,
+ "wordGap": 0.7051433457372785,
+ "abbr": 0.5128034302267246,
+ "continua": 0.3423454497486912,
+ "twist": 8.361087296020228,
+ "calibration": {
+  "features": {
+   "nib": 27.813153573146426,
+   "weight": 0.2103445689258605,
+   "slant": 3.6287783265307922,
+   "turn": 2.171514069561877,
+   "space": 0.1707682354568128,
+   "tremor": 0.08244809203314976
+  },
+  "regression": {
+   "nib": {
+    "a": 0.6595243522528681,
+    "b": 17.752602385836948,
+    "r2": 0.7339322278916534,
+    "rmse": 4.555577485286694
+   },
+   "weight": {
+    "a": 1.2994634305068409,
+    "b": -0.0009310382380968275,
+    "r2": 0.8958004856626045,
+    "rmse": 0.00971621119519745
+   },
+   "slant": {
+    "a": 1.027432958619538,
+    "b": -0.3212391117861584,
+    "r2": 0.9850653572765257,
+    "rmse": 0.7037277546824549
+   }
+  },
+  "nearest": [
+   "przejscie-humanizm",
+   "merowinska",
+   "przejscie-karol-got"
+  ]
+ }
+}

@@ -1,0 +1,51 @@
+# --- Skany i wyniki analizy (duże, odtwarzalne) ---
+# Skany z Polony: ~12 MB na stronę, domena publiczna, ale do pobrania jednym poleceniem:
+#   python3 fetch_polona_res.py <uuid> <strony>
+manuscript_pages/
+# Podglądy i wyniki recognize_scan.py (PNG po kilka MB); ręce .json zostawiamy - patrz niżej
+scan_analysis/*
+!scan_analysis/*_hand.json
+# Prototypy rąk - liczone z hands.ts, po zmianie rąk są nieaktualne:
+#   python3 recognize_scan.py --rebuild-prototypes
+hand_prototypes.json
+
+# --- Kopie robocze i oryginał od Groka ---
+*.bk[0-9]*
+*.bak
+*.orig
+# Zip z workspace Groka - oryginalny stan kodu, trzymany lokalnie jako punkt powrotu
+*-grok-workspace.zip
+
+# --- Node / Vite / platforma Groka ---
+node_modules/
+draw_script/.vercel/
+draw_script/.tanstack/
+draw_script/dist/
+draw_script/.output/
+draw_script/.node_modules.lock
+# Szablon platformy Groka (skills, references, status); app-env.json jest potrzebny
+# skryptowi scripts/with-app-env.mjs (VITE_AUTH_ENABLED=false), więc zostaje
+draw_script/.grok/*
+!draw_script/.grok/app-env.json
+# zrzuty ekranu z sesji Groka i pusty katalog na artefakty
+draw_script/screenshots/
+draw_script/artifacts/
+# lokalna baza PGLite (szablon), gdyby powstała
+draw_script/.pglite/
+*.db
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# --- System / edytory ---
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+.vscode/
+.idea/
+*.swp
+/tmp/

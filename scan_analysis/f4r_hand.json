@@ -1,0 +1,63 @@
+{
+ "nibJitter": 14.0,
+ "id": "skan-c8acfe1a_page_0021_f4r",
+ "name": "NT łac., k. 4r",
+ "latin": "ex imagine",
+ "years": [
+  620,
+  780
+ ],
+ "culture": "merowinski",
+ "blurb": "Skalibrowane ze skanu (c8acfe1a_page_0021_f4r). Zmierzone: stalówka 38°, szerokość 0.288 wysokości x, pochył 2.4°. Reszta (kształty liter, skróty) z najbliższych rąk: Merowińska. To przybliżenie, nie ekspertyza.",
+ "nib": 38.19785730567585,
+ "weight": 0.2883847302433342,
+ "slant": 2.4147919455672495,
+ "angular": 0.18,
+ "compress": 0.12,
+ "tremor": 1.8,
+ "wander": 2.6,
+ "feet": 0.12,
+ "loops": 0.2,
+ "biting": 0.15,
+ "longS": 0.25,
+ "rRotunda": 0.08,
+ "uncialD": 0.3,
+ "aForm": 0.1,
+ "wordGap": 0.32,
+ "abbr": 0.64,
+ "continua": 0.84,
+ "twist": 16.0,
+ "calibration": {
+  "features": {
+   "nib": 31.0,
+   "weight": 0.22264248588248978,
+   "slant": 2.6629777002964232,
+   "turn": 2.0588578351888156,
+   "space": 0.227425256412687,
+   "tremor": 0.0819682550650173
+  },
+  "regression": {
+   "nib": {
+    "a": 0.6595243522528681,
+    "b": 17.752602385836948,
+    "r2": 0.7339322278916534,
+    "rmse": 4.555577485286694
+   },
+   "weight": {
+    "a": 1.2994634305068409,
+    "b": -0.0009310382380968275,
+    "r2": 0.8958004856626045,
+    "rmse": 0.00971621119519745
+   },
+   "slant": {
+    "a": 1.027432958619538,
+    "b": -0.3212391117861584,
+    "r2": 0.9850653572765257,
+    "rmse": 0.7037277546824549
+   }
+  },
+  "nearest": [
+   "merowinska"
+  ]
+ }
+}

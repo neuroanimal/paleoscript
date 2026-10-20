@@ -1,0 +1,7 @@
+# paleoscript - skrypty Pythona (fetch_polona_res.py, recognize_scan.py)
+# wersje sprawdzone 2026-10-20
+requests==2.32.5
+numpy==2.3.5
+scipy==1.17.0
+scikit-image==0.26.0
+pillow==12.3.0
