@@ -33,7 +33,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: draw_script/package-lock.json
-      - run: npm ci --no-audit --no-fund
+      # package-lock.json pochodzi z npm 11; npm 10 z Node 22 odrzuca go ("ajv@6.15.0 does not
+      # satisfy ajv@8.20.0"), więc instalujemy tą samą wersją npm, którą lockfile powstał
+      - run: npx -y npm@11.12.1 ci --no-audit --no-fund
       - run: npx tsc --noEmit
       - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v3
