@@ -10,11 +10,14 @@
  *   node scripts/calamus-cli.mjs compose '{"text":"Christi autem","hand":"karolinska"}'
  *       wypisuje JSON: transkrypcja wyrazów, skróty i program LOGO
  *   node scripts/calamus-cli.mjs logo '{"text":"...","hand":"tekstualis"}' > strona.cal
+ *   node scripts/calamus-cli.mjs glyphs
+ *       JSON {ręka: {litera: program LOGO}} - pojedyncze litery każdej ręki (wzorce kształtów
+ *       dla recognize_scan.py); linia bazowa w y = marginT + 86 = 164
  *       sam program LOGO (do src/scriptorium/engine.py)
  *
  * Pola opcji compose (domyślne w nawiasie): text, hand (tekstualis), year (środek epoki ręki),
  * lang (la), genre (religijne), culture (krąg ręki), ortho (true), abbreviate (true),
- * rubric (true), density (1).
+ * rubric (true), density (1), caps (zrodlo | zdanie | brak), incipit (0), layout ({} - pola Layout).
  */
 import { createServer } from "vite";
 import { dirname, join } from "node:path";
@@ -39,6 +42,31 @@ async function main() {
       return;
     }
     const { compose } = await server.ssrLoadModule("/src/scriptorium/compose.ts");
+    if (cmd === "glyphs") {
+      const alphabet = [..."abcdefghilmnopqrstuxſ", "ꝛ"];
+      const out = {};
+      for (const hand of hands.HANDS) {
+        out[hand.id] = {};
+        for (const ch of alphabet) {
+          const page = compose({
+            text: ch === "ꝛ" ? "or" : ch,
+            hand,
+            year: hands.midYear(hand),
+            lang: "la",
+            genre: "religijne",
+            culture: hand.culture,
+            ortho: false,
+            abbreviate: false,
+            rubric: false,
+            study: null,
+          });
+          // "ꝛ" (r rotunda) powstaje tylko po o - bierzemy całe "or", kształt i tak się różni od r
+          out[hand.id][ch] = page.logo;
+        }
+      }
+      process.stdout.write(JSON.stringify(out) + "\n");
+      return;
+    }
     const o = JSON.parse(json);
     const hand = hands.handById(o.hand ?? "tekstualis");
     const page = compose({
@@ -53,6 +81,9 @@ async function main() {
       rubric: o.rubric ?? true,
       study: null,
       density: o.density ?? 1,
+      caps: o.caps ?? "zrodlo",
+      incipit: o.incipit ?? 0,
+      layout: o.layout ?? {},
     });
     if (cmd === "logo") {
       process.stdout.write(page.logo + "\n");

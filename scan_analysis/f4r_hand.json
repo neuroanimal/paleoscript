@@ -1,63 +1,77 @@
 {
- "nibJitter": 14.0,
+ "nibJitter": 6.0,
  "id": "skan-c8acfe1a_page_0021_f4r",
  "name": "NT łac., k. 4r",
  "latin": "ex imagine",
  "years": [
-  620,
-  780
+  720,
+  830
  ],
  "culture": "merowinski",
- "blurb": "Skalibrowane ze skanu (c8acfe1a_page_0021_f4r). Zmierzone: stalówka 38°, szerokość 0.288 wysokości x, pochył 2.4°. Reszta (kształty liter, skróty) z najbliższych rąk: Merowińska. To przybliżenie, nie ekspertyza.",
- "nib": 38.19785730567585,
- "weight": 0.2883847302433342,
- "slant": 2.4147919455672495,
- "angular": 0.18,
- "compress": 0.12,
- "tremor": 1.8,
- "wander": 2.6,
- "feet": 0.12,
- "loops": 0.2,
- "biting": 0.15,
- "longS": 0.25,
- "rRotunda": 0.08,
- "uncialD": 0.3,
- "aForm": 0.1,
- "wordGap": 0.32,
- "abbr": 0.64,
- "continua": 0.84,
- "twist": 16.0,
+ "blurb": "Skalibrowane ze skanu (c8acfe1a_page_0021_f4r). Zmierzone: stalówka 37°, szerokość 0.270 wysokości x, pochył 2.5°. Reszta (kształty liter, skróty) z najbliższych rąk: Minuskuła przedkarolińska. To przybliżenie, nie ekspertyza.",
+ "nib": 37.39332188936264,
+ "weight": 0.27047168293633916,
+ "slant": 2.483601583047619,
+ "angular": 0.14,
+ "compress": 0.1,
+ "tremor": 0.7,
+ "wander": 0.9,
+ "feet": 0.2,
+ "loops": 0.04,
+ "biting": 0.12,
+ "longS": 0.85,
+ "rRotunda": 0.05,
+ "uncialD": 0.35,
+ "aForm": 0.08,
+ "wordGap": 0.55,
+ "abbr": 0.55,
+ "continua": 0.4,
+ "twist": 6.0,
  "calibration": {
   "features": {
    "nib": 31.0,
-   "weight": 0.22264248588248978,
+   "weight": 0.22270196226141512,
    "slant": 2.6629777002964232,
-   "turn": 2.0588578351888156,
-   "space": 0.227425256412687,
-   "tremor": 0.0819682550650173
+   "turn": 2.0583935706244465,
+   "space": 0.22637780311668568,
+   "tremor": 0.0819691320065846
   },
   "regression": {
    "nib": {
-    "a": 0.6595243522528681,
-    "b": 17.752602385836948,
-    "r2": 0.7339322278916534,
-    "rmse": 4.555577485286694
+    "a": 0.7269505509718147,
+    "b": 14.857854809236386,
+    "r2": 0.755973291599967,
+    "rmse": 4.6252576255890405
    },
    "weight": {
-    "a": 1.2994634305068409,
-    "b": -0.0009310382380968275,
-    "r2": 0.8958004856626045,
-    "rmse": 0.00971621119519745
+    "a": 1.1634285027167133,
+    "b": 0.011373872430467015,
+    "r2": 0.8416776891402731,
+    "rmse": 0.011131450824469287
    },
    "slant": {
-    "a": 1.027432958619538,
-    "b": -0.3212391117861584,
-    "r2": 0.9850653572765257,
-    "rmse": 0.7037277546824549
+    "a": 1.017195295873323,
+    "b": -0.2251668067094627,
+    "r2": 0.9826916836616757,
+    "rmse": 0.7294590672287461
    }
   },
   "nearest": [
-   "merowinska"
+   "przedkarolinska"
   ]
+ },
+ "layout": {
+  "pageW": 3116.0,
+  "pageH": 4329.7,
+  "marginL": 459.6,
+  "marginR": 409.6,
+  "marginT": 283.7,
+  "marginB": 394.4,
+  "lineSpacing": 2.82,
+  "maxLines": 32,
+  "leftEdge": -82.6,
+  "leftKind": "page",
+  "rightEdge": 279.8,
+  "rightKind": "table"
  }
 }

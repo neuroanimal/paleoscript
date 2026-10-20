@@ -28,7 +28,9 @@ python3 recognize_scan.py manuscript_pages/c8acfe1a_page_0021_f4r.jpg \
     --hand-out scan_analysis/f4r_hand.json --base merowinska
 ```
 
-Rękę z `--hand-out` wczytuje się w GUI przyciskiem „Ręka ze skanu (.json)”.
+Rękę z `--hand-out` wczytuje się w GUI przyciskiem „Ręka ze skanu (.json)”; razem z nią
+wczytuje się geometria karty (format, marginesy, interlinia, poprzednia karta / blat obok).
+`recognize_scan.py --calibrate` sprawdza potok na kartach wygenerowanych przez Calamusa.
 
 Skany (`manuscript_pages/`) i wyniki analizy nie są w repozytorium - patrz `.gitignore`.
 

@@ -117,6 +117,15 @@ function latinSpell(word: string, year: number, notes: Note[]): string {
       w = next;
     }
   }
+  if (year < 1080) {
+    // Minuskuła wczesna zna jedną literę u dla u i v, a j nie istnieje wcale (convenirent →
+    // conuenirent, ejus → eius). V pojawia się tylko jako wielka litera - patrz majusculeV().
+    const next = w.replace(/v/g, "u").replace(/j/g, "i").replace(/J/g, "I");
+    if (next !== w) {
+      pushNote(notes, "v / j", "u / i", "Wczesna minuskuła pisze u zarówno za u, jak i za v, a zamiast j zawsze i. Wielka litera to V (majuskuła nie ma U).");
+      w = next;
+    }
+  }
   if (year >= 1080) {
     const chars = [...w];
     let changed = false;
@@ -675,6 +684,30 @@ function suffixForm(word: string, suf: string, special: Special, shownTail: stri
   };
 }
 
+/** Wielkie litery: jak w tekście źródłowym, tylko na początku zdania, albo wcale. */
+export type CapsMode = "zrodlo" | "zdanie" | "brak";
+
+/**
+ * Wielkość liter wyrazu według zwyczaju epoki. We wczesnym średniowieczu imiona i nazwy
+ * własne pisze się małą literą (maria, ioseph); wielka litera, jeśli w ogóle, otwiera zdanie.
+ */
+function recase(token: string, mode: CapsMode, sentenceStart: boolean, incipit: boolean): string {
+  if (incipit) return token.toUpperCase();
+  if (mode === "zrodlo") return token;
+  const lower = token.toLowerCase();
+  if (mode === "zdanie" && sentenceStart) return lower.charAt(0).toUpperCase() + lower.slice(1);
+  return lower;
+}
+
+/**
+ * Łacińska majuskuła nie zna litery U: kapitała, uncjała i wersaliki ksiąg piszą V tam, gdzie
+ * minuskuła ma u (XPI AVTEM GENERATIO - Polona, NT łac. [Niemcy, ca 701-800], k. 4r). Dotyczy
+ * każdej wielkiej litery w łacinie, także na początku wyrazu w tekście minuskułowym (Uerbum → Verbum).
+ */
+function majusculeV(token: string): string {
+  return token.replace(/U/g, "V");
+}
+
 export function prepareWords(opts: {
   text: string;
   year: number;
@@ -687,6 +720,10 @@ export function prepareWords(opts: {
   rubric: boolean;
   /** Mnożnik gęstości skrótów z suwaka (1 = jak w epoce). */
   density?: number;
+  /** Wielkie litery (domyślnie jak w tekście źródłowym). */
+  caps?: CapsMode;
+  /** Ile pierwszych wyrazów pisać wersalikami (incipit), 0 = żadnego. */
+  incipit?: number;
 }): { words: Word[]; notes: Note[]; transformed: string } {
   const ortho = applyOrtho(opts.text, opts.year, opts.lang, opts.ortho);
   const genreRate = GENRES.find((g) => g.id === opts.genre)?.rate ?? 0.5;
@@ -695,24 +732,47 @@ export function prepareWords(opts: {
   const words: Word[] = [];
   let seenLetter = false;
   let index = 0;
+  let sentenceStart = true;
+  const caps = opts.caps ?? "zrodlo";
+  const incipitWords = Math.max(0, opts.incipit ?? 0);
+  const notes = ortho.notes;
+  const shownParts: string[] = [];
 
-  for (const token of tokens) {
-    if (!token) continue;
-    if (/^\s+$/.test(token)) {
-      if (token.includes("\n") && words.length) words[words.length - 1].breakAfter = true;
+  for (const rawToken of tokens) {
+    if (!rawToken) continue;
+    if (/^\s+$/.test(rawToken)) {
+      if (rawToken.includes("\n") && words.length) words[words.length - 1].breakAfter = true;
+      shownParts.push(rawToken);
       continue;
     }
-    if (/^[.,;:!?()„”"“—–-]+$/.test(token)) {
-      words.push({ pieces: plainPieces(token, false), gapAfter: 0.35, breakAfter: false, text: token });
+    if (/^[.,;:!?()„”"“—–-]+$/.test(rawToken)) {
+      words.push({ pieces: plainPieces(rawToken, false), gapAfter: 0.35, breakAfter: false, text: rawToken });
+      if (/[.!?]/.test(rawToken)) sentenceStart = true;
+      shownParts.push(rawToken);
       continue;
     }
+    let token = recase(rawToken, caps, sentenceStart, index < incipitWords);
+    if (token !== rawToken && caps !== "zrodlo" && index >= incipitWords && /\p{Lu}/u.test(rawToken.slice(sentenceStart ? 1 : 0))) {
+      pushNote(notes, "Maria, Ioseph", "maria, ioseph", "Imiona i nazwy własne pisano zwykle małą literą; wielka litera, jeśli w ogóle, otwiera zdanie.");
+    }
+    if (index < incipitWords) {
+      pushNote(notes, "incipit", "WERSALIKI", "Pierwsze wyrazy księgi lub rozdziału pisano wersalikami (kapitałą albo uncjałą), często po inicjale.");
+    }
+    if (!isPolishToken(token, opts.lang) && token.includes("U")) {
+      token = majusculeV(token);
+      pushNote(notes, "U", "V", "Majuskuła łacińska nie ma U: wielka litera to zawsze V (AVTEM, Verbum).");
+    }
+    sentenceStart = false;
+    shownParts.push(token);
+    const allCaps = token.length > 1 && token === token.toUpperCase() && token !== token.toLowerCase();
     const key = norm(token.replace(/^[„"'(]+|[”"')]+$/g, ""));
     let form: Form | null = null;
     const ruleId = WORDS[key] ? key : null;
     const density = opts.density ?? 1;
     const thresholdBase = Math.min(1, genreRate * opts.hand.abbr * culture * density);
 
-    if (opts.abbreviate && ruleId && genreAllows(ruleId, opts.genre)) {
+    // w wersalikach tylko nomina sacra (XPI, DNS); AVTEM, OMNIA zostają pełne
+    if (opts.abbreviate && ruleId && genreAllows(ruleId, opts.genre) && (!allCaps || NOMINA.has(ruleId))) {
       let p = Math.min(1, thresholdBase * (ruleId === "et" ? 1 : 0.92));
       if (opts.genre === "poezja") p *= 0.45;
       // Nomina sacra są ściągane niemal zawsze, także w karolińskiej i u humanistów - to nie
@@ -725,7 +785,8 @@ export function prepareWords(opts: {
       if (roll(`${opts.hand.id}|${opts.genre}|${index}|${ruleId}`) < p) form = WORDS[ruleId];
     }
 
-    if (opts.abbreviate && !form && key.length > 4) {
+    // wersaliki skraca się tylko kontrakcją nomina sacra (XPI), nie końcówkami ani titulusem
+    if (opts.abbreviate && !form && key.length > 4 && !allCaps) {
       const p = thresholdBase * (opts.genre === "poezja" ? 0.35 : 0.85);
       const gate = roll(`${opts.hand.id}|suf|${index}|${key}`);
       if (gate < p && key.endsWith("tur") && !isPolishToken(token, opts.lang)) {
@@ -760,7 +821,7 @@ export function prepareWords(opts: {
       }
     }
 
-    if (opts.abbreviate && !form && key.length > 2 && !isPolishToken(token, opts.lang)) {
+    if (opts.abbreviate && !form && key.length > 2 && !allCaps && !isPolishToken(token, opts.lang)) {
       form = nasalForm(token, thresholdBase * (opts.genre === "poezja" ? 0.3 : 0.75), `${opts.hand.id}|nas|${index}|${key}`);
     }
 
@@ -779,7 +840,8 @@ export function prepareWords(opts: {
     index += 1;
   }
 
-  return { words, notes: ortho.notes, transformed: ortho.text };
+  // "po diachronii" pokazuje też wielkość liter i V za U - to, co faktycznie trafia na kartę
+  return { words, notes, transformed: shownParts.join("") };
 }
 
 const RESOLVER: { test: RegExp; hits: { expansion: string; note: string; system: string }[] }[] = [

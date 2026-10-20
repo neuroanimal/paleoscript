@@ -1,6 +1,6 @@
 import { makeGlyph, type Glyph, type PenPt, type Style, XH } from "./glyphs";
 import type { Hand } from "./hands";
-import { prepareWords, type AbbrUse, type Note, type Word } from "./shape";
+import { prepareWords, type AbbrUse, type CapsMode, type Note, type Word } from "./shape";
 import type { Culture, Genre, Lang } from "./hands";
 
 export type PagePt = { x: number; y: number; p: number; nib: number };
@@ -41,15 +41,53 @@ export type Page = {
   nib: number;
   clipped: boolean;
   words: WrittenWord[];
+  /** Wycinek widoku: od view.x (ujemne = widać poprzednią kartę lub blat) na szerokość view.w. */
+  view: { x: number; w: number };
+  layout: Layout;
 };
 
 const SCALE = 0.7;
-const PAGE_W = 860;
-const MARGIN_L = 64;
-const MARGIN_R = 56;
-const MARGIN_T = 78;
-const LINE = 104;
-const MAX_LINES = 12;
+
+/** Wysokość x w jednostkach karty - miara interlinii i marginesów mierzonych ze skanu. */
+export const XH_UNITS = (100 - XH) * SCALE;
+
+/**
+ * Geometria karty w jednostkach karty (wysokość x ≈ 40.6 j.).
+ * leftEdge: 0 = widok zaczyna się na lewej krawędzi karty; ujemne = widać tyle jednostek tego,
+ * co leży po lewej (poprzednia karta albo blat, leftKind); dodatnie = karta ucięta z lewej.
+ * rightEdge: dodatnie = widać tyle za prawą krawędzią (blat albo następna karta); ujemne = ucięta.
+ */
+export type Layout = {
+  pageW: number;
+  /** 0 = wysokość dobierana do tekstu */
+  pageH: number;
+  marginL: number;
+  marginR: number;
+  marginT: number;
+  marginB: number;
+  /** odstęp wierszy w wysokościach x */
+  lineSpacing: number;
+  maxLines: number;
+  leftEdge: number;
+  leftKind: "page" | "table";
+  rightEdge: number;
+  rightKind: "page" | "table";
+};
+
+export const DEFAULT_LAYOUT: Layout = {
+  pageW: 860,
+  pageH: 0,
+  marginL: 64,
+  marginR: 56,
+  marginT: 78,
+  marginB: 70,
+  lineSpacing: 104 / XH_UNITS,
+  maxLines: 12,
+  leftEdge: 0,
+  leftKind: "page",
+  rightEdge: 0,
+  rightKind: "table",
+};
 
 function hash32(s: string): number {
   let h = 2166136261;
@@ -221,7 +259,17 @@ export function compose(opts: {
   rubric: boolean;
   study: string | null;
   density?: number;
+  caps?: CapsMode;
+  incipit?: number;
+  layout?: Partial<Layout>;
 }): Page {
+  const L: Layout = { ...DEFAULT_LAYOUT, ...(opts.layout ?? {}) };
+  const PAGE_W = L.pageW;
+  const MARGIN_L = L.marginL;
+  const MARGIN_R = L.marginR;
+  const MARGIN_T = L.marginT;
+  const LINE = L.lineSpacing * XH_UNITS;
+  const MAX_LINES = Math.max(1, Math.round(L.maxLines));
   const studyChar = opts.study === "ꝛ" ? "r" : opts.study;
   const prepared = studyChar
     ? {
@@ -410,7 +458,10 @@ export function compose(opts: {
     });
   }
 
-  const h = Math.max(MARGIN_T + 86 + Math.max(line, opts.study ? 2 : 3) * LINE + 70, opts.study ? 460 : 520);
+  const auto = Math.max(MARGIN_T + 86 + Math.max(line, opts.study ? 2 : 3) * LINE + L.marginB, opts.study ? 460 : 520);
+  const h = L.pageH > 0 && !opts.study ? L.pageH : auto;
+  const viewX = L.leftEdge;
+  const viewW = Math.max(100, PAGE_W - viewX + L.rightEdge);
   if (!weight) weight = (100 - XH) * SCALE * hand.weight;
   logo.splice(3, 0, `WEIGHT ${weight.toFixed(2)}`);
 
@@ -429,5 +480,7 @@ export function compose(opts: {
     clipped,
     // wyrazy ucięte po MAX_LINES nie mają wpisu w written - pokazujemy je pełne
     words: prepared.words.map((w, i) => written[i] ?? { shown: w.text, source: w.text, abbr: false }),
+    view: { x: viewX, w: viewW },
+    layout: L,
   };
 }

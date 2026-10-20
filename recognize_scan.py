@@ -24,6 +24,17 @@ myszą. Skan z Polony to raster, więc najpierw trzeba z niego odzyskać kreski:
 Ten sam potok mierzy więc i karty generowane, i skany - opcja --calibrate sprawdza, czy
 z karty wygenerowaną daną ręką odzyskuje jej parametry i czy rozpoznaje właściwą rękę.
 
+Krok 2 - kształty liter: skan tnie się na spójne kawałki atramentu w pasie wiersza (litery,
+czasem ligatury), każdy kawałek i każdą literę każdej ręki Calamusa sprowadza do szkieletu
+w stałej skali (wysokość x = 16 px, linia bazowa w tym samym rzędzie) i porównuje. Ręka,
+której litery najlepiej pasują do kawałków skanu, wygrywa ranking kształtów. Podgląd
+dopasowań: <nazwa>_letters.png w --debug-dir.
+
+Geometria karty: krawędzie karty, blok tekstu (mediana początków i końców wierszy, więc
+glosy na marginesie i inicjały go nie rozpychają), interlinia, liczba wierszy oraz to, co
+widać obok karty (poprzednia karta albo blat). Wszystko w jednostkach karty Calamusa
+(wysokość x = 40.6 j.) i zapisywane w ręce z --hand-out jako "layout".
+
 To jest przybliżenie dydaktyczne, nie ekspertyza paleograficzna. Wynik zależy od tego, czy
 modele rąk w hands.ts są trafne; tego narzędzie nie sprawdza.
 
@@ -63,6 +74,15 @@ CLI = os.path.join(APP_DIR, "scripts", "calamus-cli.mjs")
 ENGINE = os.path.join(APP_DIR, "src", "scriptorium", "engine.py")
 PROTO_CACHE = os.path.join(HERE, "hand_prototypes.json")
 
+# wysokość x w jednostkach karty Calamusa: (BASE - XH) * SCALE z glyphs.ts / compose.ts
+XH_UNITS = (100 - 42) * 0.7
+# pierwsza linia bazowa karty Calamusa = marginT + 86 (compose.ts)
+FIRST_BASELINE_OFFSET = 86
+DEFAULT_MARGIN_T = 78
+# wspólna skala opisu kształtu: wysokość x w pikselach i rozmiar kanwy
+SHAPE_XH = 16
+SHAPE_N = 64
+
 FEATURES = ("nib", "weight", "slant", "turn", "space", "tremor")
 
 # Tekst do prototypów i osobny do kalibracji - żeby kalibracja nie mierzyła tej samej karty.
@@ -86,17 +106,104 @@ def load_gray(path: str, max_width: int, crop):
     return rgb, gray
 
 
-def page_mask(gray: np.ndarray) -> np.ndarray:
-    """Karta = największy jasny obszar; odcina czarne tło i grzbiet. Lekko zwężona od brzegu."""
+def page_mask(gray: np.ndarray, raw: bool = False):
+    """Karta = największy jasny obszar; odcina czarne tło i grzbiet. Lekko zwężona od brzegu.
+
+    Z raw=True zwraca też maskę niezwężoną (do pomiaru krawędzi karty)."""
     bright = gray > filters.threshold_otsu(gray)
+    # otwarcie rozcina wąskie mostki jasności (np. styk z poprzednią kartą w grzbiecie)
+    bright = ndimage.binary_opening(bright, iterations=max(2, int(0.004 * max(gray.shape))))
     lab, n = ndimage.label(bright)
     if n == 0:
-        return np.ones_like(gray, dtype=bool)
+        full = np.ones_like(gray, dtype=bool)
+        return (full, full) if raw else full
     sizes = ndimage.sum(bright, lab, range(1, n + 1))
     page = lab == (int(np.argmax(sizes)) + 1)
     page = ndimage.binary_fill_holes(page)
     margin = max(3, int(0.012 * max(gray.shape)))
-    return ndimage.binary_erosion(page, iterations=margin)
+    inner = ndimage.binary_erosion(page, iterations=margin)
+    return (inner, page) if raw else inner
+
+
+def find_gutters(band: np.ndarray, left: int, right: int):
+    """Grzbiet między kartami: wyraźny dołek jasności przy brzegu maski karty.
+
+    Pasek poprzedniej (albo następnej) karty jest równie jasny jak karta, więc maska z progu
+    Otsu skleja go z nią; rozdziela je dopiero ciemniejszy cień grzbietu. Szuka się dołka w
+    skrajnych 8% szerokości: głębszego o 0.06 od jasności po obu stronach."""
+    prof = ndimage.uniform_filter1d(np.median(band, axis=0), 5)
+    span = max(10, int(0.08 * (right - left)))
+    found_l = found_r = False
+
+    def dip(lo, hi):
+        """Najgłębszy dołek w [lo, hi) albo None."""
+        if hi - lo < 9:
+            return None
+        k = lo + int(np.argmin(prof[lo:hi]))
+        side_a = prof[max(lo, k - span):k].max(initial=0.0) if k > lo else 0.0
+        side_b = prof[k + 1:min(hi + span, len(prof))].max(initial=0.0)
+        return k if min(side_a, side_b) - prof[k] > 0.06 else None
+
+    k = dip(left, left + span)
+    if k is not None:
+        left, found_l = k, True
+    k = dip(right - span, right + 1)
+    if k is not None:
+        right, found_r = k, True
+    return left, right, found_l, found_r
+
+
+def page_layout(gray, page_raw, text_ink, centers, xh, pitch):
+    """Geometria karty w jednostkach Calamusa (patrz Layout w compose.ts)."""
+    units = XH_UNITS / xh
+    rows = np.flatnonzero(page_raw.any(axis=1))
+    cols = np.flatnonzero(page_raw.any(axis=0))
+    top, bottom = int(rows[0]), int(rows[-1])
+    # krawędź pionowa: kolumna, w której karta zajmuje choć 30% wysokości (postrzępiony brzeg)
+    col_fill = page_raw.sum(axis=0) / max(1, bottom - top)
+    solid = np.flatnonzero(col_fill > 0.3)
+    left, right = (int(solid[0]), int(solid[-1])) if len(solid) else (int(cols[0]), int(cols[-1]))
+    left, right, gutter_l, gutter_r = find_gutters(gray[top:bottom + 1], left, right)
+    starts, ends = [], []
+    for c in centers:
+        band = text_ink[max(0, int(c - xh / 2)):int(c + xh / 2) + 1, left:right + 1]
+        idx = np.flatnonzero(band.any(axis=0))
+        if len(idx) > 3:
+            # glosa na marginesie (np. odsyłacze kanonów) jest oddzielona od tekstu przerwą
+            # szerszą niż 3 wysokości x - liczy się tylko najdłuższy ciągły odcinek wiersza
+            parts = np.split(idx, np.flatnonzero(np.diff(idx) > 3 * xh) + 1)
+            main_part = max(parts, key=len)
+            starts.append(left + int(main_part[0]))
+            ends.append(left + int(main_part[-1]))
+    text_l = float(np.median(starts)) if starts else left + 0.1 * (right - left)
+    text_r = float(np.median(ends)) if ends else right - 0.1 * (right - left)
+    first_base = (centers[0] + xh / 2) if centers else top + 0.15 * (bottom - top)
+    last_base = (centers[-1] + xh / 2) if centers else bottom - 0.15 * (bottom - top)
+    thr = filters.threshold_otsu(gray)
+
+    def side_kind(region):
+        """Co leży obok karty: jasne = sąsiednia karta, ciemne = blat."""
+        return "page" if region.size and float(np.median(region)) > thr else "table"
+
+    band_rows = slice(top, bottom + 1)
+    left_kind = "page" if gutter_l else side_kind(gray[band_rows, :left])
+    right_kind = "page" if gutter_r else side_kind(gray[band_rows, right + 1:])
+    lay = {
+        "pageW": round((right - left) * units, 1),
+        "pageH": round((bottom - top) * units, 1),
+        "marginL": round(max(0.0, text_l - left) * units, 1),
+        "marginR": round(max(0.0, right - text_r) * units, 1),
+        "marginT": round(max(0.0, (first_base - top) * units - FIRST_BASELINE_OFFSET), 1),
+        "marginB": round(max(0.0, bottom - last_base) * units, 1),
+        "lineSpacing": round(pitch / xh, 3) if pitch else 2.56,
+        "maxLines": len(centers),
+        # ujemne = widać, co leży po lewej (cały pas obrazu przed kartą)
+        "leftEdge": round(-left * units, 1),
+        "leftKind": left_kind,
+        "rightEdge": round((gray.shape[1] - 1 - right) * units, 1),
+        "rightKind": right_kind,
+    }
+    return lay
 
 
 def ink_masks(rgb: np.ndarray, gray: np.ndarray, page: np.ndarray):
@@ -296,8 +403,11 @@ def weighted_median(pairs):
 
 
 def measure(rgb, gray, debug_dir=None, label="scan", is_render=False):
-    """Pełny potok na jednym obrazie. Zwraca słownik cech i miar pomocniczych."""
-    page = np.ones_like(gray, dtype=bool) if is_render else page_mask(gray)
+    """Pełny potok na jednym obrazie. Zwraca (cechy, miary pomocnicze, kontekst dla kształtów)."""
+    if is_render:
+        page = page_raw = np.ones_like(gray, dtype=bool)
+    else:
+        page, page_raw = page_mask(gray, raw=True)
     ink, rubric = ink_masks(rgb, gray, page) if not is_render else (gray < 0.5, np.zeros_like(gray, dtype=bool))
     text_ink = ink & ~rubric
     centers, xh, pitch = text_lines(text_ink)
@@ -325,9 +435,12 @@ def measure(rgb, gray, debug_dir=None, label="scan", is_render=False):
         "nib_fit_quality": round(fit_q, 3),
         "rubric_share": round(float(rubric.sum()) / max(1, int(ink.sum())), 4),
     }
+    if not is_render:
+        info["layout"] = page_layout(gray, page_raw, text_ink, centers, xh, pitch)
     if debug_dir:
         write_debug(debug_dir, label, gray, text_ink, rubric, paths, centers, xh)
-    return feats, info
+    ctx = {"ink": text_ink, "centers": centers, "xh": xh}
+    return feats, info, ctx
 
 
 def write_debug(debug_dir, label, gray, ink, rubric, paths, centers, xh):
@@ -370,7 +483,7 @@ def run_cli(cmd: str, opts=None) -> str:
     return res.stdout
 
 
-def render_logo(program: str, engine, px_per_unit: float = 1.0):
+def render_logo(program: str, engine, px_per_unit: float = 1.0, with_origin: bool = False):
     """Rasteryzuje program LOGO szerokim piórem (te same wielokąty co engine.ribbon)."""
     prog = engine.parse(program)
     xs = [p.x for s in prog.ink for p in s.pts]
@@ -396,6 +509,8 @@ def render_logo(program: str, engine, px_per_unit: float = 1.0):
             draw.line([left[0], right[0]], fill=0, width=1)
     gray = np.asarray(img).astype(np.float32) / 255.0
     rgb = np.stack([gray] * 3, axis=-1)
+    if with_origin:
+        return rgb, gray, (minx, miny)
     return rgb, gray
 
 
@@ -419,7 +534,7 @@ def build_prototypes(rebuild: bool):
     protos = []
     for h in hands:
         rgb, gray = hand_page(h["id"], PROTO_TEXT, engine)
-        feats, info = measure(rgb, gray, is_render=True)
+        feats, info, _ = measure(rgb, gray, is_render=True)
         protos.append({"id": h["id"], "name": h["name"], "years": h["years"],
                        "true": {k: h[k] for k in ("nib", "weight", "slant", "angular", "wordGap", "continua")},
                        "features": feats, "info": info})
@@ -535,21 +650,177 @@ def derive_hand(feats, protos, hands, name, label, base_id=None):
     return hand
 
 
-def calibrate(protos):
+# --------------------------------------------------------------------------- krok 2: kształty liter
+
+def shape_descriptor(crop: np.ndarray, baseline_row: float, xh_px: float):  # pylint: disable=unused-argument
+    """Szkielet kawałka atramentu w stałej skali (wysokość x = SHAPE_XH px), wyśrodkowany.
+
+    Szkielet zamiast plamy: rozlany atrament skanu i cienka stalówka generatora dają wtedy
+    ten sam opis. Kawałek jest centrowany w pionie po własnym obrysie, a nie po linii
+    bazowej: linia bazowa z profilu wiersza myli się o kilka pikseli, a falowanie wiersza
+    dokłada swoje, i to przesunięcie zjadało całe dopasowanie (2/12 trafień na kartach
+    generowanych zamiast 9/12). Ceną jest słabsze odróżnianie p od d i q od b - wysokość
+    i skala zostają, położenie względem linii nie. baseline_row zostaje w podpisie na wypadek
+    powrotu do wyrównania po linii, gdy jej pomiar będzie dokładniejszy.
+    Zwraca znormalizowany wektor albo None, gdy kawałek nic nie zawiera."""
+    k = SHAPE_XH / xh_px
+    z = ndimage.zoom(crop.astype(np.float32), k, order=1) > 0.35
+    if z.sum() < 4:
+        return None
+    sk = ndimage.binary_dilation(morphology.skeletonize(z), iterations=1)
+    canvas = np.zeros((SHAPE_N, SHAPE_N), dtype=np.float32)
+    h, w = sk.shape
+    r0 = int(round(SHAPE_N / 2 - h / 2))
+    c0 = int(round(SHAPE_N / 2 - w / 2))
+    rs, cs = max(0, -r0), max(0, -c0)
+    re_, ce = min(h, SHAPE_N - r0), min(w, SHAPE_N - c0)
+    if re_ <= rs or ce <= cs:
+        return None
+    canvas[r0 + rs:r0 + re_, c0 + cs:c0 + ce] = sk[rs:re_, cs:ce]
+    vec = ndimage.gaussian_filter(canvas, 1.5).ravel()
+    norm = float(np.linalg.norm(vec))
+    return vec / norm if norm > 0 else None
+
+
+def glyph_bank(engine):
+    """Opisy kształtów wszystkich liter wszystkich rąk (calamus-cli glyphs)."""
+    bank = json.loads(run_cli("glyphs"))
+    ppu = 1.4
+    rows, labels = [], []
+    for hand_id, letters in bank.items():
+        for ch, program in letters.items():
+            _, gray, (_, miny) = render_logo(program, engine, px_per_unit=ppu, with_origin=True)
+            mask = gray < 0.5
+            base_px = (DEFAULT_MARGIN_T + FIRST_BASELINE_OFFSET - miny) * ppu
+            # Litera tnie się tak samo jak skan - na spójne kawałki atramentu. Kreski glifu
+            # nie zawsze się stykają (n to dwie laski i łuk), więc kawałek skanu bywa jedną
+            # kreską; porównanie z całą literą karało wtedy właściwą rękę.
+            lab, _ = ndimage.label(mask, structure=np.ones((3, 3)))
+            for i, sl in enumerate(ndimage.find_objects(lab)):
+                if sl is None or (sl[0].stop - sl[0].start) < 0.3 * XH_UNITS * ppu:
+                    continue
+                vec = shape_descriptor(lab[sl] == (i + 1), base_px - sl[0].start, XH_UNITS * ppu)
+                if vec is not None:
+                    rows.append(vec)
+                    labels.append((hand_id, ch))
+    return np.array(rows), labels
+
+
+def ink_pieces(ctx, limit=1500, seed=0):
+    """Kawałki atramentu wielkości litery, przypisane do wiersza: (opis, kadr do podglądu)."""
+    ink, centers, xh = ctx["ink"], ctx["centers"], ctx["xh"]
+    lab, _ = ndimage.label(ink, structure=np.ones((3, 3)))
+    out = []
+    for i, sl in enumerate(ndimage.find_objects(lab)):
+        if sl is None:
+            continue
+        h, w = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+        # od pojedynczej kreski (laska ma ok. 0.15 x szerokości) do litery z ligaturą
+        if not (0.6 * xh <= h <= 3.6 * xh and 0.1 * xh <= w <= 2.0 * xh):
+            continue
+        best, base = 0.0, None
+        for c in centers:
+            ov = min(sl[0].stop, c + xh / 2) - max(sl[0].start, c - xh / 2)
+            if ov > best:
+                best, base = ov, c + xh / 2
+        if base is None or best < 0.3 * xh:
+            continue
+        crop = lab[sl] == (i + 1)
+        vec = shape_descriptor(crop, base - sl[0].start, xh)
+        if vec is not None:
+            out.append((vec, crop))
+    if len(out) > limit:
+        rng = np.random.default_rng(seed)
+        out = [out[j] for j in sorted(rng.choice(len(out), limit, replace=False))]
+    return out
+
+
+def shape_rank(ctx, bank, debug_dir=None, label="scan"):
+    """Ranking rąk po kształtach liter: średnia najlepszej odległości kawałków od liter ręki."""
+    vecs, labels = bank
+    pieces = ink_pieces(ctx)
+    if not pieces:
+        return [], 0
+    x = np.array([p[0] for p in pieces])
+    dist = 1.0 - x @ vecs.T                    # odległość kosinusowa: kawałek x litera
+    hands = sorted({h for h, _ in labels})
+    cols = {h: [j for j, (hh, _) in enumerate(labels) if hh == h] for h in hands}
+    per_hand = np.stack([dist[:, cols[h]].min(axis=1) for h in hands], axis=1)
+    # liczą się kawałki najbardziej literopodobne (połowa najlepiej dopasowanych w ogóle):
+    # pozostałe to ligatury, plamy i zlepki, które żadnej ręce nie pasują
+    best_any = per_hand.min(axis=1)
+    keep = best_any <= np.median(best_any)
+    score = per_hand[keep].mean(axis=0)
+    votes = np.bincount(per_hand[keep].argmin(axis=1), minlength=len(hands))
+    ranking = sorted(({"id": h, "shape": float(score[k]), "votes": int(votes[k])} for k, h in enumerate(hands)),
+                     key=lambda r: r["shape"])
+    if debug_dir:
+        write_letters(debug_dir, label, pieces, dist, labels, keep, ranking[0]["id"], vecs)
+    return ranking, int(keep.sum())
+
+
+def write_letters(debug_dir, label, pieces, dist, labels, keep, top_hand, vecs):
+    """Podgląd: kawałek skanu (szkielet) obok najlepszej litery zwycięskiej ręki."""
+    os.makedirs(debug_dir, exist_ok=True)
+    cols = [j for j, (h, _) in enumerate(labels) if h == top_hand]
+    sub = dist[:, cols]
+    order = [i for i in np.argsort(sub.min(axis=1)) if keep[i]][:60]
+    cell = SHAPE_N * 2 + 6
+    img = Image.new("L", (cell * 6, (SHAPE_N + 16) * ((len(order) + 5) // 6)), 255)
+    draw = ImageDraw.Draw(img)
+    for n, i in enumerate(order):
+        j = cols[int(np.argmin(sub[i]))]
+        x0, y0 = (n % 6) * cell, (n // 6) * (SHAPE_N + 16)
+        for k, vec in enumerate((pieces[i][0], vecs[j])):
+            tile = vec.reshape(SHAPE_N, SHAPE_N)
+            tile = (255 - 255 * tile / max(1e-6, tile.max())).astype(np.uint8)
+            img.paste(Image.fromarray(tile), (x0 + k * SHAPE_N, y0))
+        draw.text((x0 + 2, y0 + SHAPE_N + 2), f"{labels[j][1]}  {sub[i].min():.2f}", fill=0)
+    out = os.path.join(debug_dir, f"{label}_letters.png")
+    img.save(out)
+    print(f"[*] Podgląd liter (skan | litera ręki {top_hand}): {os.path.abspath(out)}")
+
+
+def combined_rank(feats, protos, shapes):
+    """Ranking łączny: odległość cech i odległość kształtów, każda przeskalowana do 0..1."""
+    feat = {p["id"]: d for d, p in rank(feats, protos)}
+    shp = {r["id"]: r["shape"] for r in shapes}
+
+    def scaled(m):
+        lo, hi = min(m.values()), max(m.values())
+        return {k: (v - lo) / (hi - lo) if hi > lo else 0.0 for k, v in m.items()}
+
+    fs, ss = scaled(feat), scaled(shp) if shp else {}
+    by_id = {p["id"]: p for p in protos}
+    rows = [(fs[k] + ss.get(k, fs[k]), by_id[k]) for k in fs]
+    rows.sort(key=lambda it: it[0])
+    return rows
+
+
+def calibrate(protos, bank=None):
     """Karty generowane innym tekstem: czy potok odzyskuje parametry i rozpoznaje rękę."""
     engine = load_engine()
     hits = 0
+    shape_hits = 0
     print(f"{'ręka':<22} {'nib zmierz/model':>17} {'weight':>14} {'slant':>12}  rozpoznana jako")
     for p in protos:
         rgb, gray = hand_page(p["id"], CALIB_TEXT, engine)
-        feats, _ = measure(rgb, gray, is_render=True)
+        feats, _, ctx = measure(rgb, gray, is_render=True)
         top = rank(feats, protos)[0][1]
+        if bank is not None:
+            shapes, _ = shape_rank(ctx, bank)
+            top_shape = shapes[0]["id"] if shapes else "?"
+            shape_hits += top_shape == p["id"]
+            top = combined_rank(feats, protos, shapes)[0][1]
         ok = top["id"] == p["id"]
         hits += ok
         t = p["true"]
         print(f"{p['id']:<22} {feats['nib']:7.1f} / {t['nib']:<7} {feats['weight']:6.3f}/{t['weight']:<6} "
               f"{feats['slant']:5.1f}/{t['slant']:<5}  {top['id']}{'' if ok else '  <-- pomyłka'}")
-    print(f"[*] Trafność na kartach generowanych: {hits}/{len(protos)}")
+    print(f"[*] Trafność na kartach generowanych: {hits}/{len(protos)}"
+          + ("  (ranking łączny: cechy + kształty liter)" if bank is not None else ""))
+    if bank is not None:
+        print(f"[*] Same kształty liter: {shape_hits}/{len(protos)}")
     print("[*] Regresja pomiar -> parametr modelu (używana przez --hand-out):")
     for k, r in regressions(protos).items():
         print(f"    {k:<7} model = {r['a']:.3f} * pomiar + {r['b']:.3f}   R² {r['r2']:.2f}   błąd średni {r['rmse']:.3f}")
@@ -579,25 +850,27 @@ def main(argv=None) -> int:
     parser.add_argument("--hand-out", help="zapisz rękę skalibrowaną ze skanu(ów) jako JSON do wczytania w GUI")
     parser.add_argument("--min-quality", type=float, default=0.15,
                         help="pomiń w średniej skany z nib_fit_quality poniżej progu (tablice kanonów, ornament); domyślnie 0.15")
-    parser.add_argument("--base", help="ręka bazowa dla parametrów niemierzonych (np. merowinska, karolinska); "
-                                       "domyślnie średnia z 3 najbliższych w rankingu")
+    parser.add_argument("--base", help="ręka bazowa dla parametrów niemierzonych (np. przedkarolinska, insularna); "
+                                       "domyślnie zwycięzca rankingu łącznego (z --no-shapes: średnia 3 najbliższych)")
     parser.add_argument("--name", help="nazwa ręki w GUI (domyślnie 'Ze skanu: <plik>')")
+    parser.add_argument("--no-shapes", action="store_true", help="bez kroku 2 (porównania kształtów liter)")
     args = parser.parse_args(argv)
 
     if not args.images and not args.calibrate:
         parser.error("podaj skan albo --calibrate")
 
     protos = build_prototypes(args.rebuild_prototypes)
+    bank = None if args.no_shapes else glyph_bank(load_engine())
     if args.calibrate:
-        calibrate(protos)
+        calibrate(protos, bank)
     if not args.images:
         return 0
 
-    all_feats = []
+    all_feats, all_layouts, all_ctx = [], [], []
     for image in args.images:
         rgb, gray = load_gray(image, args.max_width, args.crop)
         label = os.path.splitext(os.path.basename(image))[0]
-        feats, info = measure(rgb, gray, debug_dir=args.debug_dir, label=label)
+        feats, info, ctx = measure(rgb, gray, debug_dir=args.debug_dir, label=label)
         print(f"\n[+] {image}")
         # strona bez ciągłego tekstu (tablice kanonów, ornament, miniatura) daje model pióra
         # gorszy niż stała grubość - jej cechy nie mówią nic o ręce i psują średnią
@@ -606,6 +879,8 @@ def main(argv=None) -> int:
                   "(raczej nie ciągły tekst)")
         else:
             all_feats.append(feats)
+            all_layouts.append(info["layout"])
+            all_ctx.append((ctx, label))
         for k, v in info.items():
             print(f"    {k}: {v}")
         print("    cechy: " + ", ".join(f"{k}={feats[k]:.3f}" for k in FEATURES))
@@ -616,25 +891,60 @@ def main(argv=None) -> int:
     feats = mean_features(all_feats) if len(all_feats) > 1 else all_feats[0]
     if len(all_feats) > 1:
         print(f"\n[+] średnia z {len(all_feats)} z {len(args.images)} skanów: " + ", ".join(f"{k}={feats[k]:.3f}" for k in FEATURES))
-    print("\n    ranking (odległość, mniej = bliżej):")
+    print("\n    ranking cech duktu (odległość, mniej = bliżej):")
     ranking = rank(feats, protos)
     for d, p in ranking[:6]:
         f = p["features"]
         print(f"    {d:6.2f}  {p['name']:<34} {p['years'][0]}-{p['years'][1]}   "
               f"nib {f['nib']:5.1f}  weight {f['weight']:.3f}  slant {f['slant']:5.1f}  turn {f['turn']:.2f}  space {f['space']:.3f}  tremor {f['tremor']:.3f}")
+
+    shapes = []
+    if bank is not None:
+        per_scan = [shape_rank(ctx, bank, args.debug_dir, label) for ctx, label in all_ctx]
+        totals = {}
+        for ranking_s, _ in per_scan:
+            for r in ranking_s:
+                acc = totals.setdefault(r["id"], {"id": r["id"], "shape": 0.0, "votes": 0})
+                acc["shape"] += r["shape"] / len(per_scan)
+                acc["votes"] += r["votes"]
+        shapes = sorted(totals.values(), key=lambda r: r["shape"])
+        names = {p["id"]: p for p in protos}
+        used = sum(n for _, n in per_scan)
+        print(f"\n    ranking kształtów liter ({used} kawałków atramentu; odległość 0..1, głosy = najlepsza ręka kawałka):")
+        for r in shapes[:6]:
+            p = names[r["id"]]
+            print(f"    {r['shape']:6.3f}  {p['name']:<34} {p['years'][0]}-{p['years'][1]}   głosy {r['votes']}")
+        print("\n    ranking łączny (cechy + kształty, 0 = najlepszy w obu):")
+        for d, p in combined_rank(feats, protos, shapes)[:6]:
+            print(f"    {d:6.2f}  {p['name']:<34} {p['years'][0]}-{p['years'][1]}")
+
+    layout = {}
+    for key in all_layouts[0]:
+        vals = [lay[key] for lay in all_layouts]
+        layout[key] = (round(float(np.median(vals)), 2) if isinstance(vals[0], (int, float))
+                       else max(set(vals), key=vals.count))
+    layout["maxLines"] = int(round(layout["maxLines"]))
+    print(f"\n    karta (jednostki Calamusa, wys. x = {XH_UNITS:.1f} j.): "
+          + ", ".join(f"{k}={v}" for k, v in layout.items()))
+
     if args.json:
         with open(args.json, "w", encoding="utf-8") as fh:
-            json.dump({"images": args.images, "features": feats,
+            json.dump({"images": args.images, "features": feats, "layout": layout, "shapes": shapes,
                        "ranking": [{"id": p["id"], "distance": d} for d, p in ranking]}, fh, indent=1, ensure_ascii=False)
         print(f"[*] Wynik: {os.path.abspath(args.json)}")
     if args.hand_out:
         label = os.path.splitext(os.path.basename(args.images[0]))[0] + (f"+{len(args.images) - 1}" if len(args.images) > 1 else "")
-        hand = derive_hand(feats, protos, json.loads(run_cli("hands")), args.name, label, args.base)
+        base = args.base
+        if not base and shapes:
+            # bez --base: ręka bazowa = zwycięzca rankingu łącznego (cechy + kształty liter)
+            base = combined_rank(feats, protos, shapes)[0][1]["id"]
+        hand = derive_hand(feats, protos, json.loads(run_cli("hands")), args.name, label, base)
+        hand["layout"] = layout
         os.makedirs(os.path.dirname(os.path.abspath(args.hand_out)), exist_ok=True)
         with open(args.hand_out, "w", encoding="utf-8") as fh:
             json.dump(hand, fh, indent=1, ensure_ascii=False)
         print(f"\n[+] Ręka do GUI: {hand['name']}  nib {hand['nib']:.1f}°  weight {hand['weight']:.3f}  "
-              f"slant {hand['slant']:.1f}°  lata {hand['years'][0]}-{hand['years'][1]}")
+              f"slant {hand['slant']:.1f}°  lata {hand['years'][0]}-{hand['years'][1]}  baza: {base or 'średnia 3 najbliższych'}")
         print(f"[*] Zapisano: {os.path.abspath(args.hand_out)}  - wczytaj w aplikacji: Epoka -> 'Ręka ze skanu'")
     return 0
 

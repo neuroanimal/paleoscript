@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Download, Pause, Play, RotateCcw, SkipForward } from "lucide-react";
-import { compose, ribbon, type Frame, type Page } from "@/scriptorium/compose";
+import { compose, DEFAULT_LAYOUT, ribbon, XH_UNITS, type Frame, type Layout, type Page } from "@/scriptorium/compose";
 import {
   CULTURES,
   GENRES,
@@ -14,7 +14,7 @@ import {
   type Hand,
   type Lang,
 } from "@/scriptorium/hands";
-import { resolveQuery } from "@/scriptorium/shape";
+import { resolveQuery, type CapsMode } from "@/scriptorium/shape";
 import { matchHands, matchLetters, type Stroke } from "@/scriptorium/recognize";
 import enginePy from "@/scriptorium/engine.py?raw";
 
@@ -104,6 +104,33 @@ const TUNE: { key: keyof Hand; label: string; min: number; max: number; step: nu
 ];
 
 const CUSTOM_KEY = "calamus.customHands";
+
+/** Suwaki geometrii karty: klucz Layout, etykieta, zakres, krok (jednostki karty, wys. x ≈ 40.6 j.). */
+const LAYOUT_TUNE: { key: keyof Layout; label: string; min: number; max: number; step: number }[] = [
+  { key: "pageW", label: "Szerokość karty", min: 400, max: 4000, step: 10 },
+  { key: "pageH", label: "Wysokość karty (0 = do tekstu)", min: 0, max: 6000, step: 10 },
+  { key: "marginL", label: "Margines lewy", min: 0, max: 1000, step: 2 },
+  { key: "marginR", label: "Margines prawy", min: 0, max: 1000, step: 2 },
+  { key: "marginT", label: "Margines górny", min: 0, max: 1000, step: 2 },
+  { key: "marginB", label: "Margines dolny", min: 0, max: 1000, step: 2 },
+  { key: "lineSpacing", label: "Interlinia (× wys. x)", min: 1.4, max: 5, step: 0.05 },
+  { key: "maxLines", label: "Wierszy na karcie", min: 1, max: 60, step: 1 },
+  { key: "leftEdge", label: "Lewa krawędź (− = widać to, co obok)", min: -600, max: 300, step: 2 },
+  { key: "rightEdge", label: "Za prawą krawędzią (− = ucięta)", min: -300, max: 600, step: 2 },
+];
+
+/** Geometria z pliku ręki (recognize_scan.py zapisuje ją jako "layout"), tylko znane pola. */
+function layoutFromJson(raw: unknown): Partial<Layout> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const src = raw as Record<string, unknown>;
+  const out: Partial<Layout> = {};
+  for (const [k, v] of Object.entries(DEFAULT_LAYOUT)) {
+    const val = src[k];
+    if (typeof v === "number" && typeof val === "number" && Number.isFinite(val)) (out as Record<string, number>)[k] = val;
+    if (typeof v === "string" && (val === "page" || val === "table")) (out as Record<string, string>)[k] = val;
+  }
+  return out;
+}
 
 /** Ręka z pliku JSON (recognize_scan.py --hand-out albo "Pobierz JSON"): brakujące pola z karolińskiej. */
 function handFromJson(raw: unknown): Hand {
@@ -275,6 +302,9 @@ export function Scriptorium() {
   const [refImg, setRefImg] = useState<string | null>(null);
   const [refZoom, setRefZoom] = useState(100);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
+  const [caps, setCaps] = useState<CapsMode>("zrodlo");
+  const [incipit, setIncipit] = useState(0);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? "[]");
@@ -318,8 +348,11 @@ export function Scriptorium() {
         rubric,
         study,
         density,
+        caps,
+        incipit,
+        layout,
       }),
-    [text, hand, year, lang, genre, culture, ortho, abbreviate, rubric, study, density],
+    [text, hand, year, lang, genre, culture, ortho, abbreviate, rubric, study, density, caps, incipit, layout],
   );
 
   const times = useMemo(() => timeline(page.frames, speed, liftMs), [page.frames, speed, liftMs]);
@@ -385,7 +418,11 @@ export function Scriptorium() {
 
   const loadHandFile = async (file: File) => {
     try {
-      const h = handFromJson(JSON.parse(await file.text()));
+      const raw = JSON.parse(await file.text());
+      const h = handFromJson(raw);
+      // ręka ze skanu niesie też geometrię karty zmierzoną na tym samym skanie
+      const lay = layoutFromJson((raw as Record<string, unknown>).layout);
+      if (lay && Object.keys(lay).length) setLayout({ ...DEFAULT_LAYOUT, ...lay });
       saveCustom([...customHands.filter((c) => c.id !== h.id), h]);
       setLoadError(null);
       setHandA(h.id);
@@ -606,7 +643,7 @@ export function Scriptorium() {
               <button type="button" className="btn small primary" onClick={saveTuned}>
                 Zapisz jako rękę
               </button>
-              <button type="button" className="btn small" onClick={() => downloadJson(`${hand.id}.json`, hand)}>
+              <button type="button" className="btn small" onClick={() => downloadJson(`${hand.id}.json`, { ...hand, layout })}>
                 Pobierz JSON
               </button>
             </div>
@@ -716,6 +753,64 @@ export function Scriptorium() {
             />
           </label>
           <p className="whisper">100% = zwyczaj epoki, kręgu i gatunku. Nomina sacra ściąga się prawie zawsze.</p>
+          <label className="field">
+            <span>Wielkie litery</span>
+            <select value={caps} onChange={(e) => setCaps(e.target.value as CapsMode)}>
+              <option value="zrodlo">Jak w tekście</option>
+              <option value="zdanie">Tylko na początku zdania (imiona małą)</option>
+              <option value="brak">Wcale (wszystko małą)</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Incipit wersalikami: {incipit ? `${incipit} wyraz(y)` : "nie"}</span>
+            <input type="range" min={0} max={8} value={incipit} onChange={(e) => setIncipit(Number(e.target.value))} />
+          </label>
+          <p className="whisper">W łacinie wielka litera U jest zawsze pisana jako V (XPI AVTEM).</p>
+          <details className="tune">
+            <summary>Karta: format i marginesy</summary>
+            <p className="whisper">
+              Jednostki karty; wysokość x to {XH_UNITS.toFixed(1)} j. Ręka ze skanu ustawia te wartości ze zmierzonej
+              karty.
+            </p>
+            {LAYOUT_TUNE.map((t) => (
+              <label key={t.key} className="field tight-v">
+                <span>
+                  {t.label}: {t.step < 1 ? Number(layout[t.key]).toFixed(2) : Math.round(Number(layout[t.key]))}
+                </span>
+                <input
+                  type="range"
+                  min={t.min}
+                  max={t.max}
+                  step={t.step}
+                  value={Number(layout[t.key])}
+                  onChange={(e) => setLayout((prev) => ({ ...prev, [t.key]: Number(e.target.value) }))}
+                />
+              </label>
+            ))}
+            <label className="field tight-v">
+              <span>Po lewej</span>
+              <select
+                value={layout.leftKind}
+                onChange={(e) => setLayout((prev) => ({ ...prev, leftKind: e.target.value as Layout["leftKind"] }))}
+              >
+                <option value="page">poprzednia karta</option>
+                <option value="table">blat stołu</option>
+              </select>
+            </label>
+            <label className="field tight-v">
+              <span>Po prawej</span>
+              <select
+                value={layout.rightKind}
+                onChange={(e) => setLayout((prev) => ({ ...prev, rightKind: e.target.value as Layout["rightKind"] }))}
+              >
+                <option value="table">blat stołu</option>
+                <option value="page">następna karta</option>
+              </select>
+            </label>
+            <button type="button" className="btn small" onClick={() => setLayout(DEFAULT_LAYOUT)}>
+              Format domyślny
+            </button>
+          </details>
         </section>
 
         <section className="col-sheet">
@@ -856,12 +951,68 @@ export function Scriptorium() {
             </div>
           ) : null}
           <article className="sheet">
-            <svg viewBox={`0 0 ${page.w} ${page.h}`} role="img" aria-label="Karta zapisana piórem">
+            <svg
+              viewBox={`${page.view.x} 0 ${page.view.w} ${page.h}`}
+              role="img"
+              aria-label="Karta zapisana piórem"
+            >
+              <defs>
+                <linearGradient id="gutter" x1="0" x2="1">
+                  <stop offset="0" stopColor="#000" stopOpacity="0" />
+                  <stop offset="1" stopColor="#000" stopOpacity="0.45" />
+                </linearGradient>
+              </defs>
+              {/* sama karta; poza nią (gdy proporcje okna i karty się różnią) widać ciemne tło */}
+              <rect className="leaf" x={0} y={0} width={page.w} height={page.h} />
+              {page.view.x < 0 ? (
+                <g>
+                  <rect
+                    className={page.layout.leftKind === "table" ? "table" : "neighbour"}
+                    x={page.view.x}
+                    y={0}
+                    width={-page.view.x}
+                    height={page.h}
+                  />
+                  {page.layout.leftKind === "page" ? (
+                    <rect x={Math.max(page.view.x, -40)} y={0} width={Math.min(40, -page.view.x)} height={page.h} fill="url(#gutter)" />
+                  ) : null}
+                </g>
+              ) : null}
+              {page.view.x + page.view.w > page.w ? (
+                <rect
+                  className={page.layout.rightKind === "table" ? "table" : "neighbour"}
+                  x={page.w}
+                  y={0}
+                  width={page.view.x + page.view.w - page.w}
+                  height={page.h}
+                />
+              ) : null}
+              <line className="margin" x1={page.layout.marginL} x2={page.layout.marginL} y1={0} y2={page.h} />
+              <line
+                className="margin"
+                x1={page.w - page.layout.marginR}
+                x2={page.w - page.layout.marginR}
+                y1={0}
+                y2={page.h}
+              />
               {page.rules[0] ? (
-                <line className="head-rule" x1={52} x2={page.w - 48} y1={page.rules[0] - 34} y2={page.rules[0] - 34} />
+                <line
+                  className="head-rule"
+                  x1={page.layout.marginL - 12}
+                  x2={page.w - page.layout.marginR + 8}
+                  y1={page.rules[0] - 34}
+                  y2={page.rules[0] - 34}
+                />
               ) : null}
               {page.rules.map((y) => (
-                <line key={y} className="rule" x1={52} x2={page.w - 48} y1={y} y2={y} />
+                <line
+                  key={y}
+                  className="rule"
+                  x1={page.layout.marginL - 12}
+                  x2={page.w - page.layout.marginR + 8}
+                  y1={y}
+                  y2={y}
+                />
               ))}
               {travel.map((seg, i) => (
                 <line key={`t${i}`} className="travel" x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} />

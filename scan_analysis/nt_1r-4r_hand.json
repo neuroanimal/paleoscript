@@ -1,0 +1,77 @@
+{
+ "nibJitter": 6.0,
+ "id": "skan-c8acfe1a_page_0015_f1r+4",
+ "name": "NT łac. VIII w., k. 1r-4r",
+ "latin": "ex imagine",
+ "years": [
+  720,
+  830
+ ],
+ "culture": "merowinski",
+ "blurb": "Skalibrowane ze skanu (c8acfe1a_page_0015_f1r+4). Zmierzone: stalówka 35°, szerokość 0.259 wysokości x, pochył 3.5°. Reszta (kształty liter, skróty) z najbliższych rąk: Minuskuła przedkarolińska. To przybliżenie, nie ekspertyza.",
+ "nib": 34.93529472601077,
+ "weight": 0.25946827159638336,
+ "slant": 3.503964860256676,
+ "angular": 0.14,
+ "compress": 0.1,
+ "tremor": 0.7,
+ "wander": 0.9,
+ "feet": 0.2,
+ "loops": 0.04,
+ "biting": 0.12,
+ "longS": 0.85,
+ "rRotunda": 0.05,
+ "uncialD": 0.35,
+ "aForm": 0.08,
+ "wordGap": 0.55,
+ "abbr": 0.55,
+ "continua": 0.4,
+ "twist": 6.0,
+ "calibration": {
+  "features": {
+   "nib": 27.618714766684075,
+   "weight": 0.2132442161994424,
+   "slant": 3.6660921281241827,
+   "turn": 2.161072291933318,
+   "space": 0.16526049381081662,
+   "tremor": 0.08259039715297908
+  },
+  "regression": {
+   "nib": {
+    "a": 0.7269505509718147,
+    "b": 14.857854809236386,
+    "r2": 0.755973291599967,
+    "rmse": 4.6252576255890405
+   },
+   "weight": {
+    "a": 1.1634285027167133,
+    "b": 0.011373872430467015,
+    "r2": 0.8416776891402731,
+    "rmse": 0.011131450824469287
+   },
+   "slant": {
+    "a": 1.017195295873323,
+    "b": -0.2251668067094627,
+    "r2": 0.9826916836616757,
+    "rmse": 0.7294590672287461
+   }
+  },
+  "nearest": [
+   "przedkarolinska"
+  ]
+ },
+ "layout": {
+  "pageW": 3116.0,
+  "pageH": 4329.7,
+  "marginL": 459.6,
+  "marginR": 427.1,
+  "marginT": 284.8,
+  "marginB": 585.9,
+  "lineSpacing": 2.78,
+  "maxLines": 29,
+  "leftEdge": -89.6,
+  "leftKind": "table",
+  "rightEdge": 233.8,
+  "rightKind": "table"
+ }
+}

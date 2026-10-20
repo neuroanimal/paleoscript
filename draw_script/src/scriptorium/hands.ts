@@ -1,5 +1,6 @@
 export type Culture =
   | "merowinski"
+  | "insularny"
   | "karolinski"
   | "zachodni"
   | "polski"
@@ -43,6 +44,11 @@ export const CULTURES: { id: Culture; name: string; note: string }[] = [
     id: "merowinski",
     name: "Krąg merowiński",
     note: "Kancelarie frankijskie i skryptoria przed reformą karolińską. Dużo suspensji, mało odstępów.",
+  },
+  {
+    id: "insularny",
+    name: "Krąg insularny",
+    note: "Irlandia, Northumbria i misje anglosaskie na kontynencie (Fulda, Würzburg, Echternach). Gęste skróty własne, ornament plecionkowy.",
   },
   {
     id: "karolinski",
@@ -120,6 +126,62 @@ export const HANDS: Hand[] = [
     abbr: 0.64,
     continua: 0.84,
     twist: 16,
+  }),
+  H({
+    id: "insularna",
+    name: "Minuskuła insularna",
+    latin: "minuscula insularis",
+    years: [680, 850],
+    culture: "insularny",
+    blurb:
+      "Anglosaska i irlandzka minuskuła ksiąg i misji: klinowe zakończenia, płasko trzymane pióro, długie ſ i r schodzące pod linię, a jak podwójne c. Na kontynencie w skryptoriach misyjnych.",
+    nib: 22,
+    nibJitter: 5,
+    weight: 0.15,
+    slant: 2,
+    angular: 0.3,
+    compress: 0.22,
+    tremor: 0.5,
+    wander: 0.6,
+    feet: 0.5,
+    loops: 0,
+    biting: 0.2,
+    longS: 0.9,
+    rRotunda: 0.05,
+    uncialD: 0.55,
+    aForm: 0.06,
+    wordGap: 0.5,
+    abbr: 0.7,
+    continua: 0.45,
+    twist: 8,
+  }),
+  H({
+    id: "przedkarolinska",
+    name: "Minuskuła przedkarolińska",
+    latin: "minuscula praecarolina",
+    years: [720, 830],
+    culture: "merowinski",
+    blurb:
+      "Skryptoria frankijskie i alemańskie przed reformą (typ ab z Corbie, St. Gallen, Reichenau): okrągła, szeroka, a otwarte jak cc, ligatury z e i t, wyrazy częściowo zlane. Wersaliki uncjalno-kapitałowe, U pisane jako V.",
+    nib: 30,
+    nibJitter: 6,
+    weight: 0.16,
+    slant: 3,
+    angular: 0.14,
+    compress: 0.1,
+    tremor: 0.7,
+    wander: 0.9,
+    feet: 0.2,
+    loops: 0.04,
+    biting: 0.12,
+    longS: 0.85,
+    rRotunda: 0.05,
+    uncialD: 0.35,
+    aForm: 0.08,
+    wordGap: 0.55,
+    abbr: 0.55,
+    continua: 0.4,
+    twist: 6,
   }),
   H({
     id: "karolinska",
@@ -376,7 +438,8 @@ export const HANDS: Hand[] = [
 ];
 
 export function handById(id: string): Hand {
-  return HANDS.find((h) => h.id === id) ?? HANDS[3];
+  // domyślna ręka po id, nie po indeksie - lista HANDS rośnie
+  return HANDS.find((h) => h.id === id) ?? HANDS.find((h) => h.id === "tekstualis") ?? HANDS[0];
 }
 
 export function lerpHand(a: Hand, b: Hand, t: number): Hand {
@@ -422,6 +485,7 @@ export function midYear(h: Hand): number {
 
 export const CULTURE_ABBR: Record<Culture, number> = {
   merowinski: 1.08,
+  insularny: 1.15,
   karolinski: 0.72,
   zachodni: 1,
   polski: 1,

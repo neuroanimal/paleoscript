@@ -647,3 +647,33 @@ textarea {
   display: block;
   max-width: none;
 }
+
+/* --- geometria karty: sąsiednia karta, blat, linie marginesów --- */
+.sheet .table {
+  fill: #0e0b09;
+}
+
+.sheet .neighbour {
+  fill: color-mix(in srgb, var(--color-parchment) 82%, var(--color-gall));
+}
+
+.sheet .margin {
+  stroke: var(--color-rule);
+  stroke-width: 0.8;
+  stroke-dasharray: 3 5;
+}
+
+/* karta rysowana w SVG, panel pod nią to stół - inaczej przy wąskim oknie tło panelu
+   udawało pergamin obok karty i nie było widać, gdzie kończy się kartka */
+.sheet {
+  background-color: #0e0b09;
+  background-image: none;
+}
+
+.sheet .leaf {
+  fill: var(--color-parchment);
+}
+
+.sheet-foot {
+  background: var(--color-parchment);
+}
